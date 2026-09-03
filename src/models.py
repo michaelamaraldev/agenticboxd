@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Film(BaseModel):
@@ -37,6 +37,16 @@ class HistoryContext(BaseModel):
 
     relevant_patterns: tuple[str, ...] = Field(min_length=1, max_length=5)
     rewatch_signals: tuple[str, ...] = Field(default=(), max_length=3)
+
+    @field_validator("relevant_patterns", mode="before")
+    @classmethod
+    def limit_patterns(cls, value: object) -> object:
+        return value[:5] if isinstance(value, (list, tuple)) else value
+
+    @field_validator("rewatch_signals", mode="before")
+    @classmethod
+    def limit_rewatch_signals(cls, value: object) -> object:
+        return value[:3] if isinstance(value, (list, tuple)) else value
 
 
 class WatchlistSelection(BaseModel):

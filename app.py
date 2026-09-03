@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import csv
 import io
 import os
@@ -343,12 +342,15 @@ def _render_result(result: CineResult, output_fn: Callable[[str], None]) -> None
 
 def run_cli(
     recommender: Recommends,
-    utterance: str | None = None,
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
 ) -> None:
-    request = utterance if utterance is not None else input_fn("O que você quer assistir? ")
-    _render_result(recommender.recommend(request.strip()), output_fn)
+    output_fn("Olá, Michael! Gostaria de uma recomendação de filme da sua watchlist hoje?")
+    request = input_fn("Conte o que você está procurando: ").strip()
+    if not request:
+        output_fn("Nenhum pedido informado.")
+        return
+    _render_result(recommender.recommend(request), output_fn)
 
 
 def tmdb_token() -> str:
@@ -384,18 +386,8 @@ def create_recommender() -> Recommender:
     return Recommender(data, model, cache)
 
 
-def main(argv: Sequence[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Recomenda filmes da sua watchlist do Letterboxd com dados confirmados pelo TMDb."
-        )
-    )
-    parser.add_argument(
-        "--utterance",
-        help='Pedido em linguagem natural. Exemplo: "Me recomende um romance parecido com Rohmer."',
-    )
-    arguments = parser.parse_args(argv)
-    run_cli(create_recommender(), utterance=arguments.utterance)
+def main() -> None:
+    run_cli(create_recommender())
 
 
 if __name__ == "__main__":
