@@ -39,7 +39,9 @@ def final_prompt() -> str:
         "Choose up to 3 of the supplied TMDb-confirmed candidates that best satisfy the user's "
         "request. Rank by fit and use diversity only as a tiebreaker. Write concise fit_reason "
         "text in Brazilian Portuguese. You may use general film knowledge to interpret the "
-        "request, but make factual claims about candidates only from the supplied TMDb data. Copy "
+        "request, but make factual claims about candidates only from the supplied TMDb data. "
+        "Do not mention release years, cast, directors, plot details, or other objective facts in "
+        "fit_reason; explain only why the movie fits the requested mood, themes, or style. Copy "
         "selection_position exactly and do not recommend any other movie. Return the structured "
         "response immediately without intermediate analysis or prose."
     )
