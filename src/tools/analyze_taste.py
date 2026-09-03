@@ -8,8 +8,8 @@ from langchain.tools import tool
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 
-from agents.taste import taste_request
-from models import LetterboxdData, TasteProfile
+from ..agents.taste import taste_request
+from ..models import LetterboxdData, TasteProfile
 
 
 @dataclass(slots=True)

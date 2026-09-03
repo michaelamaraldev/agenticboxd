@@ -10,7 +10,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from models import Film, TmdbCache, TmdbFact
+from .models import Film, TmdbCache, TmdbFact
 
 
 def normalize_title(value: str) -> str:
