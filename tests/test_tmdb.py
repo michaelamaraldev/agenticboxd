@@ -6,8 +6,14 @@ from typing import Any
 
 import httpx
 
-from models import Film, TmdbCache, TmdbFact
-from tmdb import TmdbClient, load_tmdb_cache, save_tmdb_cache, select_unique_match, sync_tmdb_cache
+from src.models import Film, TmdbCache, TmdbFact
+from src.tmdb import (
+    TmdbClient,
+    load_tmdb_cache,
+    save_tmdb_cache,
+    select_unique_match,
+    sync_tmdb_cache,
+)
 
 
 def test_match_accepts_exact_title_or_original_title_and_year() -> None:

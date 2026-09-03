@@ -7,7 +7,7 @@ from langchain.agents.structured_output import ToolStrategy
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import Runnable
 
-from models import LetterboxdData, TasteProfile
+from ..models import LetterboxdData, TasteProfile
 
 
 def taste_prompt() -> str:

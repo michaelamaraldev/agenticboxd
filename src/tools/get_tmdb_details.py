@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from langchain.tools import tool
 from langchain_core.tools import BaseTool
 
-from models import TmdbCache, TmdbFact, WatchlistSelection
+from ..models import TmdbCache, TmdbFact, WatchlistSelection
 
 
 @dataclass(slots=True)

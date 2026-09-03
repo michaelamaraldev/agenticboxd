@@ -17,10 +17,10 @@ from langchain_core.tools import BaseTool
 from pydantic import Field
 
 import app
-from agents.recommendation import final_prompt, selection_prompt
-from agents.taste import taste_prompt
 from app import Recommender, load_letterboxd, run_cli
-from models import CineResult, LetterboxdData, TmdbCache, TmdbFact
+from src.agents.recommendation import final_prompt, selection_prompt
+from src.agents.taste import taste_prompt
+from src.models import CineResult, LetterboxdData, TmdbCache, TmdbFact
 
 
 class RecordingFakeModel(FakeMessagesListChatModel):
@@ -230,8 +230,8 @@ def test_empty_verified_catalog_returns_before_agents() -> None:
 
 
 def test_llm_facing_docstrings_are_english() -> None:
-    from tools.analyze_taste import create_analyze_taste_tool
-    from tools.get_tmdb_details import create_get_tmdb_details_tool
+    from src.tools.analyze_taste import create_analyze_taste_tool
+    from src.tools.get_tmdb_details import create_get_tmdb_details_tool
 
     assert taste_prompt.__doc__ is not None and taste_prompt.__doc__.isascii()
     assert selection_prompt.__doc__ is not None and selection_prompt.__doc__.isascii()

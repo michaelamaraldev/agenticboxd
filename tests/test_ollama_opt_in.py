@@ -7,8 +7,8 @@ import pytest
 from langchain_ollama import ChatOllama
 
 from app import Recommender, load_letterboxd, tmdb_token
-from models import Film, LetterboxdData, TmdbCache, TmdbFact
-from tmdb import TmdbClient, load_tmdb_cache
+from src.models import Film, LetterboxdData, TmdbCache, TmdbFact
+from src.tmdb import TmdbClient, load_tmdb_cache
 
 SEMANTIC_REQUESTS = (
     "Me recomende um filme de romance parecido com os filmes do Rohmer.",

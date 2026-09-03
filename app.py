@@ -12,15 +12,15 @@ from dotenv import load_dotenv
 from langchain_core.language_models import BaseChatModel
 from langchain_ollama import ChatOllama
 
-from agents.recommendation import (
+from src.agents.recommendation import (
     create_recommendation_agent,
     final_prompt,
     final_request,
     selection_prompt,
     selection_request,
 )
-from agents.taste import create_taste_agent
-from models import (
+from src.agents.taste import create_taste_agent
+from src.models import (
     CineResult,
     Film,
     LetterboxdData,
@@ -29,9 +29,9 @@ from models import (
     TmdbCache,
     WatchlistSelection,
 )
-from tmdb import TmdbClient, load_tmdb_cache, sync_tmdb_cache
-from tools.analyze_taste import TasteToolState, create_analyze_taste_tool
-from tools.get_tmdb_details import TmdbToolState, create_get_tmdb_details_tool
+from src.tmdb import TmdbClient, load_tmdb_cache, sync_tmdb_cache
+from src.tools.analyze_taste import TasteToolState, create_analyze_taste_tool
+from src.tools.get_tmdb_details import TmdbToolState, create_get_tmdb_details_tool
 
 
 def _rows(path: Path, required_fields: tuple[str, ...]) -> list[dict[str, str]]:
