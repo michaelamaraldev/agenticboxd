@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from src.models import (
     CineResult,
+    HistoryContext,
     RecommendationChoices,
     TasteProfile,
     TmdbCache,
@@ -17,6 +18,7 @@ def test_structured_contracts_are_pydantic_models() -> None:
     assert RecommendationChoices(recommendations=()).recommendations == ()
     assert CineResult().recommendations == ()
     assert TmdbCache().movies == {}
+    assert HistoryContext(relevant_patterns=("pattern",)).relevant_patterns
 
 
 @pytest.mark.parametrize(

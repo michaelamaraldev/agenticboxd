@@ -19,11 +19,13 @@ def test_project_uses_src_runtime_layout() -> None:
 
     assert {path.name for path in (root / "src" / "agents").glob("*.py")} == {
         "__init__.py",
+        "history.py",
         "recommendation.py",
         "taste.py",
     }
     assert {path.name for path in (root / "src" / "tools").glob("*.py")} == {
         "__init__.py",
+        "analyze_history.py",
         "analyze_taste.py",
         "get_tmdb_details.py",
     }
@@ -31,7 +33,7 @@ def test_project_uses_src_runtime_layout() -> None:
     assert all(not (root / name).exists() for name in ("models.py", "tmdb.py", "agents", "tools"))
 
 
-def test_project_has_two_agents_and_two_tools_without_langgraph_api() -> None:
+def test_project_has_three_agents_and_three_tools_without_langgraph_api() -> None:
     source = runtime_source()
     forbidden = (
         "from langgraph",
@@ -43,9 +45,10 @@ def test_project_has_two_agents_and_two_tools_without_langgraph_api() -> None:
     )
 
     assert all(token not in source for token in forbidden)
-    assert source.count("create_agent(") == 2
-    assert source.count("@tool") == 2
+    assert source.count("create_agent(") == 3
+    assert source.count("@tool") == 3
     assert "taste_agent.invoke" in source
+    assert "history_agent.invoke" in source
     assert "recommendation_agent.invoke" in source
 
 
