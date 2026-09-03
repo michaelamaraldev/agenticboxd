@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from langchain_core.language_models import BaseChatModel
 from langchain_ollama import ChatOllama
 
+from src.agents.history import create_history_agent
 from src.agents.recommendation import (
     create_recommendation_agent,
     final_prompt,
@@ -30,6 +31,7 @@ from src.models import (
     WatchlistSelection,
 )
 from src.tmdb import TmdbClient, load_tmdb_cache, sync_tmdb_cache
+from src.tools.analyze_history import HistoryToolState, create_analyze_history_tool
 from src.tools.analyze_taste import TasteToolState, create_analyze_taste_tool
 from src.tools.get_tmdb_details import TmdbToolState, create_get_tmdb_details_tool
 
@@ -59,13 +61,44 @@ def _tsv(headers: tuple[str, ...], rows: Sequence[Sequence[object]]) -> str:
     return output.getvalue()
 
 
+def _optional_rows(path: Path, required_fields: tuple[str, ...]) -> list[dict[str, str]]:
+    return _rows(path, required_fields) if path.exists() else []
+
+
+def _ranking_rows(path: Path) -> list[tuple[str, str, str, str]]:
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    header_index = next(
+        (index for index, line in enumerate(lines) if line.startswith("Position,")), None
+    )
+    if header_index is None:
+        raise ValueError(f"Missing ranking table in {path}")
+    metadata = list(csv.DictReader(lines[1:3]))
+    list_name = metadata[0].get("Name", path.stem) if metadata else path.stem
+    entries = csv.DictReader(lines[header_index:])
+    return [
+        (list_name, row["Position"], row["Name"], row["Year"])
+        for row in entries
+        if row.get("Position") and row.get("Name") and row.get("Year")
+    ]
+
+
 def load_letterboxd(data_dir: Path) -> LetterboxdData:
     watchlist_path = data_dir / "watchlist.csv"
     ratings_path = data_dir / "ratings.csv"
     reviews_path = data_dir / "reviews.csv"
+    watched_path = data_dir / "watched.csv"
+    liked_films_path = data_dir / "likes" / "films.csv"
+    profile_path = data_dir / "profile.csv"
+    diary_path = data_dir / "diary.csv"
     watchlist_rows = _rows(watchlist_path, ("Name", "Year", "Letterboxd URI"))
     ratings_rows = _rows(ratings_path, ("Name", "Year", "Rating"))
     reviews_rows = _rows(reviews_path, ("Name", "Year", "Rating", "Review", "Tags"))
+    watched_rows = _optional_rows(watched_path, ("Name", "Year", "Letterboxd URI"))
+    liked_films_rows = _optional_rows(liked_films_path, ("Name", "Year"))
+    profile_rows = _optional_rows(profile_path, ("Favorite Films",))
+    diary_rows = _optional_rows(
+        diary_path, ("Name", "Year", "Rating", "Rewatch", "Tags", "Watched Date")
+    )
     watchlist = tuple(
         Film(
             watchlist_id=_required(row, "Letterboxd URI", watchlist_path),
@@ -85,10 +118,51 @@ def load_letterboxd(data_dir: Path) -> LetterboxdData:
             for row in reviews_rows
         ),
     )
+    liked_films_tsv = _tsv(
+        ("title", "year"),
+        tuple((row["Name"], row["Year"]) for row in liked_films_rows),
+    )
+    watched_by_uri = {
+        row["Letterboxd URI"].strip(): (row["Name"], row["Year"])
+        for row in watched_rows
+    }
+    favorite_uris = (
+        [item.strip() for item in profile_rows[0]["Favorite Films"].split(",")]
+        if profile_rows
+        else []
+    )
+    favorite_films_tsv = _tsv(
+        ("title", "year"),
+        tuple(watched_by_uri[uri] for uri in favorite_uris if uri in watched_by_uri),
+    )
+    ranking_rows = tuple(
+        row
+        for path in sorted((data_dir / "lists").glob("*.csv"))
+        for row in _ranking_rows(path)
+    )
+    rankings_tsv = _tsv(("list", "position", "title", "year"), ranking_rows)
+    diary_tsv = _tsv(
+        ("watched_date", "title", "year", "rating", "rewatch", "tags"),
+        tuple(
+            (
+                row["Watched Date"],
+                row["Name"],
+                row["Year"],
+                row["Rating"],
+                row["Rewatch"],
+                row["Tags"],
+            )
+            for row in diary_rows
+        ),
+    )
     return LetterboxdData(
         watchlist=watchlist,
         ratings_tsv=ratings_tsv,
         reviews_tsv=reviews_tsv,
+        liked_films_tsv=liked_films_tsv,
+        favorite_films_tsv=favorite_films_tsv,
+        rankings_tsv=rankings_tsv,
+        diary_tsv=diary_tsv,
     )
 
 
@@ -129,9 +203,14 @@ class Recommender:
         self.model = model
         self.cache = cache
         self.taste_agent = create_taste_agent(model)
+        self.history_agent = create_history_agent(model)
         self.taste_state = TasteToolState()
+        self.history_state = HistoryToolState()
         self.analyze_taste = create_analyze_taste_tool(
             self.taste_agent, data, self.taste_state
+        )
+        self.analyze_history = create_analyze_history_tool(
+            self.history_agent, data, self.history_state
         )
 
     def recommend(self, request: str) -> CineResult:
@@ -153,6 +232,9 @@ class Recommender:
         taste_profile = self.analyze_taste.invoke({})
         if not isinstance(taste_profile, str):
             raise ValueError("invalid analyze_taste result")
+        history_context = self.analyze_history.invoke({"request": request})
+        if not isinstance(history_context, str):
+            raise ValueError("invalid analyze_history result")
         # Primeiro, a LLM escolhe até dez filmes olhando o catálogo completo.
         selection_agent = create_recommendation_agent(
             self.model,
@@ -167,6 +249,7 @@ class Recommender:
                         "content": selection_request(
                             request,
                             taste_profile,
+                            history_context,
                             verified_catalog(self.data, self.cache),
                         ),
                     }
@@ -198,7 +281,9 @@ class Recommender:
                 "messages": [
                     {
                         "role": "user",
-                        "content": final_request(request, taste_profile, details),
+                        "content": final_request(
+                            request, taste_profile, history_context, details
+                        ),
                     }
                 ]
             }

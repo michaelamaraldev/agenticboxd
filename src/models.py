@@ -19,6 +19,10 @@ class LetterboxdData:
     watchlist: tuple[Film, ...]
     ratings_tsv: str
     reviews_tsv: str
+    liked_films_tsv: str = ""
+    favorite_films_tsv: str = ""
+    rankings_tsv: str = ""
+    diary_tsv: str = ""
 
 
 class TasteProfile(BaseModel):
@@ -26,6 +30,13 @@ class TasteProfile(BaseModel):
 
     likes: tuple[str, ...]
     dislikes: tuple[str, ...]
+
+
+class HistoryContext(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    relevant_patterns: tuple[str, ...] = Field(min_length=1, max_length=5)
+    rewatch_signals: tuple[str, ...] = Field(default=(), max_length=3)
 
 
 class WatchlistSelection(BaseModel):

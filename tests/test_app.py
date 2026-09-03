@@ -85,6 +85,11 @@ def scripted_responses(watchlist_id: str) -> list[BaseMessage]:
             {"likes": ["natural dialogue"], "dislikes": ["graphic violence"]},
         ),
         tool_call(
+            "HistoryContext",
+            "history-context",
+            {"relevant_patterns": ["recent romances"], "rewatch_signals": []},
+        ),
+        tool_call(
             "WatchlistSelection",
             "selection",
             {"candidate_ids": [1]},
@@ -116,7 +121,15 @@ def test_agents_use_taste_and_verified_tmdb_details(letterboxd_fixture_dir: Path
     assert result.recommendations[0].directors == ("Director",)
     prompts = [str(message.content) for call in model.seen_messages for message in call]
     assert any("RATINGS_TSV" in prompt and "REVIEWS_TSV" in prompt for prompt in prompts)
+    assert any("DIARY_TSV" in prompt and "Something warm" in prompt for prompt in prompts)
     assert any("Sinopse confirmada." in prompt for prompt in prompts)
+    user_prompts = [
+        str(call[-1].content) for call in model.seen_messages if call and call[-1].type == "human"
+    ]
+    assert "RATINGS_TSV" in user_prompts[0]
+    assert "DIARY_TSV" in user_prompts[1]
+    assert "VERIFIED_WATCHLIST_TSV" in user_prompts[2]
+    assert "SELECTED_TMDB_FACTS_JSON" in user_prompts[3]
 
 
 def test_prompt_contains_arbitrary_utterance_and_every_confirmed_movie_in_order(
@@ -176,7 +189,7 @@ def test_taste_profile_is_cached_between_requests(letterboxd_fixture_dir: Path) 
     data = load_letterboxd(letterboxd_fixture_dir)
     target = data.watchlist[0]
     first = scripted_responses(target.watchlist_id)
-    second = [first[1], first[2]]
+    second = first[1:]
     model = RecordingFakeModel(responses=first + second)
     recommender = Recommender(data, model, cache_for(data))
 
@@ -185,6 +198,7 @@ def test_taste_profile_is_cached_between_requests(letterboxd_fixture_dir: Path) 
 
     prompts = [str(message.content) for call in model.seen_messages for message in call]
     assert sum("RATINGS_TSV" in prompt for prompt in prompts) == 1
+    assert sum("DIARY_TSV" in prompt for prompt in prompts) == 2
 
 
 def test_unknown_selection_is_rejected(letterboxd_fixture_dir: Path) -> None:
@@ -192,6 +206,11 @@ def test_unknown_selection_is_rejected(letterboxd_fixture_dir: Path) -> None:
     model = RecordingFakeModel(
         responses=[
             tool_call("TasteProfile", "profile", {"likes": [], "dislikes": []}),
+            tool_call(
+                "HistoryContext",
+                "history",
+                {"relevant_patterns": ["recent viewing"], "rewatch_signals": []},
+            ),
             tool_call(
                 "WatchlistSelection",
                 "selection",

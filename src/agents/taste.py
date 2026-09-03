@@ -13,7 +13,8 @@ from ..models import LetterboxdData, TasteProfile
 def taste_prompt() -> str:
     """Build the taste agent prompt."""
     return (
-        "Analyze all supplied Letterboxd ratings and reviews. "
+        "Analyze all supplied Letterboxd ratings, reviews, liked films, favorite films, and "
+        "ranked lists. "
         "Infer stable likes and dislikes only from that evidence. "
         "Prefer recurring patterns over isolated entries and do not invent preferences. "
         "Return the structured response immediately without intermediate analysis or prose."
@@ -21,7 +22,12 @@ def taste_prompt() -> str:
 
 
 def taste_request(data: LetterboxdData) -> str:
-    return f"RATINGS_TSV:\n{data.ratings_tsv}\nREVIEWS_TSV:\n{data.reviews_tsv}"
+    return (
+        f"RATINGS_TSV:\n{data.ratings_tsv}\nREVIEWS_TSV:\n{data.reviews_tsv}"
+        f"\nLIKED_FILMS_TSV:\n{data.liked_films_tsv}"
+        f"\nFAVORITE_FILMS_TSV:\n{data.favorite_films_tsv}"
+        f"\nRANKINGS_TSV:\n{data.rankings_tsv}"
+    )
 
 
 def create_taste_agent(model: BaseChatModel) -> Runnable[Any, Any]:

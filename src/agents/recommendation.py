@@ -21,9 +21,12 @@ def selection_prompt() -> str:
     )
 
 
-def selection_request(utterance: str, taste_profile: str, catalog_tsv: str) -> str:
+def selection_request(
+    request: str, taste_profile: str, history_context: str, catalog_tsv: str
+) -> str:
     return (
-        f"UTTERANCE:\n{utterance}\nTASTE_PROFILE_JSON:\n{taste_profile}"
+        f"REQUEST:\n{request}\nTASTE_PROFILE_JSON:\n{taste_profile}"
+        f"\nHISTORY_CONTEXT_JSON:\n{history_context}"
         f"\nVERIFIED_WATCHLIST_TSV:\n{catalog_tsv}END_VERIFIED_WATCHLIST\n"
         "FINAL_INSTRUCTION:\nReturn no more than 10 candidate_ids. If more movies match, "
         "rank them and keep only the 10 strongest. Never list every matching movie."
@@ -42,9 +45,12 @@ def final_prompt() -> str:
     )
 
 
-def final_request(utterance: str, taste_profile: str, details_json: str) -> str:
+def final_request(
+    request: str, taste_profile: str, history_context: str, details_json: str
+) -> str:
     return (
-        f"UTTERANCE:\n{utterance}\nTASTE_PROFILE_JSON:\n{taste_profile}"
+        f"REQUEST:\n{request}\nTASTE_PROFILE_JSON:\n{taste_profile}"
+        f"\nHISTORY_CONTEXT_JSON:\n{history_context}"
         f"\nSELECTED_TMDB_FACTS_JSON:\n{details_json}"
     )
 
