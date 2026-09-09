@@ -1,15 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from collections.abc import Mapping
+import json
 from dataclasses import dataclass
-from typing import Any
 
 from langchain.tools import tool
-from langchain_core.runnables import Runnable
-from langchain_core.tools import BaseTool
 
-from ..agents.history import history_request
-from ..models import HistoryContext, LetterboxdData
+from ..agents.history import create_history_agent, history_message
+from ..local_data import create_history_search_tool
+from ..models import HistoryContext
 
 
 @dataclass(slots=True)
@@ -19,23 +17,35 @@ class HistoryToolState:
 
 
 def create_analyze_history_tool(
-    history_agent: Runnable[Any, Any], data: LetterboxdData, state: HistoryToolState
-) -> BaseTool:
-    """Build the tool that relates the current request to Letterboxd viewing history."""
-
+    model, evidence_store, request, state, budget, personal_evidence
+):
     @tool
-    def analyze_history(request: str) -> str:
-        """Analyze the complete diary for patterns relevant to the current request."""
+    def analyze_history(question: str = "") -> str:
+        """Investigate relevant diary periods or rewatch signals for the current request."""
         state.calls += 1
-        result = history_agent.invoke(
-            {"messages": [{"role": "user", "content": history_request(request, data)}]}
-        )
-        if not isinstance(result, Mapping):
-            raise ValueError("invalid history agent result")
+        store = evidence_store.fork()
+        scope = budget.scope("history", model_limit=4, tool_limit=4)
+        agent = create_history_agent(model, [create_history_search_tool(store)], [scope])
+        result = agent.invoke({"messages": [history_message(request, store.summary(("diary",)), question)]},
+                              config={"max_concurrency": 1, "recursion_limit": 20})
         context = result.get("structured_response")
         if not isinstance(context, HistoryContext):
-            raise ValueError("invalid history agent structured response")
+            raise TypeError("invalid history agent structured response")
+        refs = {ref for signal in (*context.relevant_patterns, *context.rewatch_signals) for ref in signal.evidence_ids}
+        store.validate_refs(refs)
+        evidence = {ref: store.by_id[ref] for ref in refs}
+        personal_evidence.update(evidence)
         state.context = context
-        return context.model_dump_json()
-
+        return json.dumps(
+            {
+                "context": context.model_dump(mode="json"),
+                "evidence": evidence,
+                "required_final_personal_evidence_ids": sorted(refs),
+                "final_instruction": (
+                    "Every recommendation must copy at least one diary ID from "
+                    "required_final_personal_evidence_ids."
+                ),
+            },
+            ensure_ascii=False,
+        )
     return analyze_history
