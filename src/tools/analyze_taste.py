@@ -1,15 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from collections.abc import Mapping
+import json
 from dataclasses import dataclass
-from typing import Any
 
 from langchain.tools import tool
-from langchain_core.runnables import Runnable
-from langchain_core.tools import BaseTool
 
-from ..agents.taste import taste_request
-from ..models import LetterboxdData, TasteProfile
+from ..agents.taste import create_taste_agent, taste_message
+from ..local_data import EvidenceStore, create_taste_search_tool
+from ..models import TasteProfile
 
 
 @dataclass(slots=True)
@@ -18,26 +16,31 @@ class TasteToolState:
     calls: int = 0
 
 
-def create_analyze_taste_tool(
-    taste_agent: Runnable[Any, Any], data: LetterboxdData, state: TasteToolState
-) -> BaseTool:
-    """Build the taste-analysis tool used by the recommendation agent."""
+def profile_refs(profile):
+    return {ref for signal in (*profile.likes, *profile.dislikes) for ref in signal.evidence_ids}
 
+
+def run_taste(model, evidence_store: EvidenceStore, budget, question=""):
+    store = evidence_store.fork()
+    scope = budget.scope("taste", model_limit=4, tool_limit=4)
+    agent = create_taste_agent(model, [create_taste_search_tool(store)], [scope])
+    summary = store.summary(("ratings", "reviews", "likes", "favorites", "rankings"))
+    result = agent.invoke({"messages": [taste_message(summary, question)]}, config={"max_concurrency": 1, "recursion_limit": 20})
+    profile = result.get("structured_response")
+    if not isinstance(profile, TasteProfile):
+        raise TypeError("invalid taste agent structured response")
+    refs = profile_refs(profile)
+    store.validate_refs(refs)
+    return profile, {ref: store.by_id[ref] for ref in refs}
+
+
+def create_analyze_taste_tool(model, evidence_store, state, budget, personal_evidence):
     @tool
-    def analyze_taste() -> str:
-        """Ask the taste agent to infer preferences from all Letterboxd ratings and reviews."""
+    def analyze_taste(question: str = "") -> str:
+        """Ask the taste specialist to investigate additional personal evidence relevant to a question."""
         state.calls += 1
-        # O perfil de gosto é calculado uma vez e reaproveitado na sessão.
-        if state.profile is None:
-            result = taste_agent.invoke(
-                {"messages": [{"role": "user", "content": taste_request(data)}]}
-            )
-            if not isinstance(result, Mapping):
-                raise ValueError("invalid taste agent result")
-            profile = result.get("structured_response")
-            if not isinstance(profile, TasteProfile):
-                raise ValueError("invalid taste agent structured response")
-            state.profile = profile
-        return state.profile.model_dump_json()
-
+        profile, evidence = run_taste(model, evidence_store, budget, question)
+        state.profile = profile
+        personal_evidence.update(evidence)
+        return json.dumps({"profile": profile.model_dump(mode="json"), "evidence": evidence}, ensure_ascii=False)
     return analyze_taste

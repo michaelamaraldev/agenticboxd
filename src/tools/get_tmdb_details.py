@@ -25,23 +25,26 @@ def create_get_tmdb_details_tool(
 
     @tool(args_schema=WatchlistSelection)
     def get_tmdb_details(candidate_ids: tuple[int, ...]) -> str:
-        """Return verified TMDb details for up to 10 selected numeric candidate IDs."""
+        """Call once with up to 10 investigated candidate IDs to confirm final TMDb facts."""
         unknown = [candidate_id for candidate_id in candidate_ids if candidate_id not in candidates]
         if unknown:
             raise ValueError(f"unknown candidate_id: {unknown[0]}")
-        if state.selected_ids is not None and state.selected_ids != candidate_ids:
+        if state.selected_ids is not None:
             raise ValueError("watchlist selection is already defined")
         state.selected_ids = candidate_ids
         state.confirmed = {
-            position: cache.movies[candidates[candidate_id]]
-            for position, candidate_id in enumerate(candidate_ids, start=1)
+            candidate_id: cache.movies[candidates[candidate_id]]
+            for candidate_id in candidate_ids
         }
         return json.dumps(
             {
-                "movies": {
-                    selection_position: fact.model_dump(mode="json")
-                    for selection_position, fact in state.confirmed.items()
-                }
+                "movies": [
+                    {
+                        "candidate_id": candidate_id,
+                        **fact.model_dump(mode="json"),
+                    }
+                    for candidate_id, fact in state.confirmed.items()
+                ]
             },
             ensure_ascii=False,
         )
