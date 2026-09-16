@@ -34,6 +34,11 @@ from src.models import (
     TasteProfile,
     TmdbCache,
 )
+from src.observability import (
+    RecommendationObserver,
+    ollama_version_info,
+    runtime_manifest_factory,
+)
 from src.tmdb import TmdbClient, load_tmdb_cache, sync_tmdb_cache
 from src.tools.analyze_history import HistoryToolState, create_analyze_history_tool
 from src.tools.analyze_taste import TasteToolState, create_analyze_taste_tool
@@ -174,27 +179,6 @@ def load_letterboxd(data_dir: Path) -> LetterboxdData:
     )
 
 
-def verified_catalog(data: LetterboxdData, cache: TmdbCache) -> str:
-    rows = []
-    # IDs curtos são mais fáceis para o modelo devolver sem alterar.
-    candidate_id = 0
-    for film in data.watchlist:
-        fact = cache.movies.get(film.watchlist_id)
-        if fact is None:
-            continue
-        candidate_id += 1
-        rows.append(
-            (
-                candidate_id,
-                fact.title,
-                fact.year,
-                ", ".join(fact.genres),
-                ", ".join(fact.directors),
-            )
-        )
-    return _tsv(("candidate_id", "title", "year", "genres", "directors"), rows)
-
-
 def verified_candidates(data: LetterboxdData, cache: TmdbCache) -> dict[int, str]:
     ids = [film.watchlist_id for film in data.watchlist if film.watchlist_id in cache.movies]
     return {index: watchlist_id for index, watchlist_id in enumerate(ids, start=1)}
@@ -257,6 +241,7 @@ class Recommender:
         cache: TmdbCache,
         taste_cache_path: Path | None = None,
         initialization_metrics: Mapping[str, object] | None = None,
+        observer: RecommendationObserver | None = None,
     ) -> None:
         self.data = data
         self.model = model
@@ -264,6 +249,7 @@ class Recommender:
         self.evidence_store = EvidenceStore(data)
         self.taste_cache = TasteCache(taste_cache_path or Path("data/taste_profile.json"))
         self.initialization_metrics = dict(initialization_metrics or {})
+        self.observer = observer
 
     def _taste_profile(
         self, budget: RequestBudget
@@ -292,6 +278,18 @@ class Recommender:
         return state.profile, evidence, False, warning
 
     def recommend(
+        self,
+        request: str,
+        flow_callback: Callable[[str], None] | None = None,
+    ) -> CineResult:
+        def operation() -> CineResult:
+            return self._recommend(request, flow_callback)
+
+        if self.observer is None:
+            return operation()
+        return self.observer.observe(request, operation)
+
+    def _recommend(
         self,
         request: str,
         flow_callback: Callable[[str], None] | None = None,
@@ -570,13 +568,29 @@ def create_recommender() -> Recommender:
     finally:
         client.close()
     tmdb_synced = time.perf_counter()
+    model_name = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     model = ChatOllama(
-        model=os.getenv("OLLAMA_MODEL", "qwen3.5:4b"),
-        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        model=model_name,
+        base_url=ollama_base_url,
         num_ctx=32768,
         num_predict=1024,
         reasoning=False,
         temperature=0,
+    )
+    ollama_version, model_digest = ollama_version_info(ollama_base_url, model_name)
+    root = Path(__file__).resolve().parent
+    observer = RecommendationObserver(
+        runs_root=root / "runs",
+        manifest_factory=runtime_manifest_factory(
+            root=root,
+            data_dir=data_dir,
+            cache_path=cache_path,
+            model_name=model_name,
+            model_config=_model_config(model),
+            ollama_version=ollama_version,
+            model_digest=model_digest,
+        ),
     )
     return Recommender(
         data,
@@ -588,6 +602,7 @@ def create_recommender() -> Recommender:
             "tmdb_sync_seconds": tmdb_synced - letterboxd_loaded,
             "initialization_seconds": time.perf_counter() - started,
         },
+        observer=observer,
     )
 
 
