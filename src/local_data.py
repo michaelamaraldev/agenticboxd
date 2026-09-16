@@ -30,15 +30,26 @@ class SearchConstraints:
 
 
 def request_constraints(request: str) -> SearchConstraints:
+    """Extract explicit year and runtime limits from a Portuguese request."""
     text = normalize(request)
-    runtime_max = _number_after(
-        text,
-        r"(?:ate|no maximo|menos de|maximo de)\s+(\d+)\s*(?:minutos|min\b)",
-    )
-    runtime_min = _number_after(
-        text,
-        r"(?:pelo menos|no minimo|mais de|minimo de)\s+(\d+)\s*(?:minutos|min\b)",
-    )
+    runtime_max = _duration_after(text, r"(?:ate|no maximo|maximo de)")
+    strict_runtime_max = _duration_after(text, r"menos de")
+    if strict_runtime_max is not None:
+        strict_runtime_max -= 1
+        runtime_max = (
+            strict_runtime_max
+            if runtime_max is None
+            else min(runtime_max, strict_runtime_max)
+        )
+    runtime_min = _duration_after(text, r"(?:pelo menos|no minimo|minimo de)")
+    strict_runtime_min = _duration_after(text, r"mais de")
+    if strict_runtime_min is not None:
+        strict_runtime_min += 1
+        runtime_min = (
+            strict_runtime_min
+            if runtime_min is None
+            else max(runtime_min, strict_runtime_min)
+        )
     year_min = _number_after(
         text,
         r"(?:lancad[oa]\s+)?(?:depois de|a partir de)\s+(\d{4})\b",
@@ -48,6 +59,20 @@ def request_constraints(request: str) -> SearchConstraints:
         r"(?:lancad[oa]\s+)?(?:antes de|ate)\s+(\d{4})\b",
     )
     return SearchConstraints(year_min, year_max, runtime_min, runtime_max)
+
+
+def _duration_after(text: str, prefix: str) -> int | None:
+    number = r"(\d+|um|uma|dois|duas)"
+    match = re.search(
+        rf"{prefix}\s+{number}\s*(horas?\b|minutos?\b|min\b)",
+        text,
+    )
+    if match is None:
+        return None
+    values = {"um": 1, "uma": 1, "dois": 2, "duas": 2}
+    token = match.group(1)
+    amount = int(token) if token.isdigit() else values[token]
+    return amount * 60 if match.group(2).startswith("hora") else amount
 
 
 def _number_after(text: str, pattern: str) -> int | None:
