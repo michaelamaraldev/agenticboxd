@@ -13,7 +13,7 @@ O projeto foi criado para estudar LangChain e coordenação multiagente com uma 
 - Busca lexical sem diferenciação de acentos ou maiúsculas.
 - Filtros determinísticos de ano e duração.
 - Recomendações restritas à interseção entre watchlist e cache TMDb.
-- Confirmação final única de até dez candidatos antes da escolha.
+- Busca compacta de até cinco candidatos e confirmação final de até três filmes.
 - Até três recomendações por pedido, com uma escolha principal e até duas alternativas.
 - Referências verificáveis para evidências pessoais e fatos dos filmes.
 - Limites de chamadas por agente e por pedido.
@@ -66,7 +66,7 @@ Não há um quarto agente supervisor. A coordenação fica no agente recomendado
 4. O recomendador recebe o pedido e o perfil.
 5. Ele pode consultar um especialista e reformular a busca conforme a necessidade.
 6. A busca retorna páginas de candidatos confirmados.
-7. Uma chamada final confirma até dez candidatos.
+7. Uma chamada final confirma até três candidatos.
 8. O modelo escolhe até três filmes, define um deles como principal e associa referências às justificativas.
 9. O código valida candidatos, fatos, restrições e referências antes de exibir o resultado.
 
@@ -326,7 +326,9 @@ O CLI não apresenta uma seção de métricas. Tempos, contagens, tokens dispon�
 
 Essas medidas permitem comparar cache frio e quente usando o mesmo modelo, hardware e conjunto de pedidos sem poluir a experiência no terminal.
 
-Em medições locais durante o desenvolvimento, a versão anterior excedeu dois minutos e processou centenas de milhares de tokens de entrada antes de falhar. A implementação atual observou aproximadamente 18 segundos para reconstruir o perfil, 9–11 segundos e três chamadas em pedidos simples com cache quente, e 25–32 segundos e oito chamadas quando o histórico foi consultado. Esses números são referências do ambiente de desenvolvimento, não uma garantia de desempenho em outro hardware.
+Em uma medição real com cache quente, o pedido simples da apresentação terminou com três chamadas de modelo, três tools e 9.837 tokens. Um pedido temporal acionou o history agent e terminou com seis chamadas de modelo, seis tools e 13.703 tokens. Antes da compactação, um caminho equivalente chegou a nove chamadas e 69.221 tokens. Esses números são referências do ambiente de desenvolvimento, não uma garantia de desempenho em outro hardware.
+
+O fluxo comum permite uma busca compacta, uma confirmação TMDb e uma resposta estruturada. O history agent só fica disponível quando o pedido menciona explicitamente histórico recente ou reassistidos. O taste agent continua responsável por criar o perfil quando o cache está ausente, mas não é chamado novamente quando esse perfil já está disponível.
 
 ## Testes e qualidade
 
