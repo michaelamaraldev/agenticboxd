@@ -41,6 +41,7 @@ def _recommendations(run: Any) -> list[Mapping[str, Any]] | None:
 
 
 def build_evaluators(recommender: Recommends) -> tuple[Callable[..., Any], ...]:
+    # Os avaliadores conferem regras objetivas sem pedir outra avaliação ao modelo
     data = getattr(recommender, "data", None)
     watchlist = getattr(data, "watchlist", ())
     if not isinstance(watchlist, (list, tuple)):
@@ -56,7 +57,9 @@ def build_evaluators(recommender: Recommends) -> tuple[Callable[..., Any], ...]:
         recommendations = _recommendations(run)
         if recommendations is None:
             return {"score": 0}
-        valid = all(item.get("watchlist_id") in eligible_ids for item in recommendations)
+        valid = all(
+            item.get("watchlist_id") in eligible_ids for item in recommendations
+        )
         return {"score": int(valid)}
 
     def request_constraints(run: Any, example: Any) -> dict[str, int]:
@@ -116,6 +119,7 @@ def run_benchmark(
     experiment_prefix: str = "letterboxd-recommender",
 ) -> Any:
     """Run real recommendation requests as a reproducible LangSmith experiment."""
+
     def target(example: dict[Any, Any]) -> dict[Any, Any]:
         result = recommender.recommend(example["request"])
         if hasattr(result, "model_dump"):

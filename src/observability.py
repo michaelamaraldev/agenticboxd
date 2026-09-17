@@ -68,6 +68,7 @@ def configure_langsmith(
     )
     payloads_visible = tracing_enabled and app_environment == "demo"
     if tracing_enabled:
+        # Apenas o modo demo envia pedidos e respostas pessoais ao LangSmith
         visibility = "false" if payloads_visible else "true"
         values["LANGSMITH_HIDE_INPUTS"] = visibility
         values["LANGSMITH_HIDE_OUTPUTS"] = visibility
@@ -115,6 +116,7 @@ def build_manifest(
     python_version: str,
     ollama_version: str,
 ) -> dict[str, object]:
+    # O manifesto liga cada run às versões exatas de dados, prompts e dependências
     return {
         "run_id": run_id,
         "git_revision": git_revision,

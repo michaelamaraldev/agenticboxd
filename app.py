@@ -74,14 +74,17 @@ def _tsv(headers: tuple[str, ...], rows: Sequence[Sequence[object]]) -> str:
     return output.getvalue()
 
 
-def _optional_rows(path: Path, required_fields: tuple[str, ...]) -> list[dict[str, str]]:
+def _optional_rows(
+    path: Path, required_fields: tuple[str, ...]
+) -> list[dict[str, str]]:
     return _rows(path, required_fields) if path.exists() else []
 
 
 def _ranking_rows(path: Path) -> list[tuple[str, str, str, str]]:
     lines = path.read_text(encoding="utf-8-sig").splitlines()
     header_index = next(
-        (index for index, line in enumerate(lines) if line.startswith("Position,")), None
+        (index for index, line in enumerate(lines) if line.startswith("Position,")),
+        None,
     )
     if header_index is None:
         raise ValueError(f"Missing ranking table in {path}")
@@ -180,7 +183,11 @@ def load_letterboxd(data_dir: Path) -> LetterboxdData:
 
 
 def verified_candidates(data: LetterboxdData, cache: TmdbCache) -> dict[int, str]:
-    ids = [film.watchlist_id for film in data.watchlist if film.watchlist_id in cache.movies]
+    ids = [
+        film.watchlist_id
+        for film in data.watchlist
+        if film.watchlist_id in cache.movies
+    ]
     return {index: watchlist_id for index, watchlist_id in enumerate(ids, start=1)}
 
 
@@ -247,7 +254,9 @@ class Recommender:
         self.model = model
         self.cache = cache
         self.evidence_store = EvidenceStore(data)
-        self.taste_cache = TasteCache(taste_cache_path or Path("data/taste_profile.json"))
+        self.taste_cache = TasteCache(
+            taste_cache_path or Path("data/taste_profile.json")
+        )
         self.initialization_metrics = dict(initialization_metrics or {})
         self.observer = observer
 
@@ -311,11 +320,16 @@ class Recommender:
         if not available_ids:
             return CineResult(
                 warnings=warnings or ("Nenhum filme foi confirmado pelo TMDb.",),
-                metrics={**self.initialization_metrics, "total_seconds": time.perf_counter() - started},
+                metrics={
+                    **self.initialization_metrics,
+                    "total_seconds": time.perf_counter() - started,
+                },
             )
         budget = RequestBudget(flow_callback)
         constraints = request_constraints(request)
-        profile, personal_evidence, cache_hit, cache_warning = self._taste_profile(budget)
+        profile, personal_evidence, cache_hit, cache_warning = self._taste_profile(
+            budget
+        )
         if cache_warning:
             warnings += (cache_warning,)
         taste_state = TasteToolState(profile=profile)
@@ -364,7 +378,7 @@ class Recommender:
         choices = result.get("structured_response")
         if not isinstance(choices, RecommendationChoices):
             raise InvalidAgentResult("invalid recommendation agent structured response")
-        # Os dados exibidos vêm do cache TMDb, não do texto gerado pela LLM.
+        # Os dados exibidos vêm do cache TMDb, não do texto gerado pela LLM
         recommendations = []
         for choice in choices.recommendations:
             fact = tmdb_state.confirmed.get(choice.candidate_id)
@@ -379,12 +393,16 @@ class Recommender:
                 if reference != "request" and reference not in personal_evidence
             ]
             if invalid_personal:
-                raise ValueError(f"personal evidence was not supplied: {invalid_personal[0]}")
+                raise ValueError(
+                    f"personal evidence was not supplied: {invalid_personal[0]}"
+                )
             if history_state.context is not None and not any(
                 reference.startswith("diary:")
                 for reference in choice.personal_evidence_ids
             ):
-                raise ValueError("history-based recommendation must cite diary evidence")
+                raise ValueError(
+                    "history-based recommendation must cite diary evidence"
+                )
             prefix = f"movie:{choice.candidate_id}:"
             invalid_movie = [
                 reference
@@ -402,7 +420,10 @@ class Recommender:
                 for reference in choice.personal_evidence_ids
             }
             evidence.update(
-                {reference: catalog.evidence[reference] for reference in choice.movie_evidence_ids}
+                {
+                    reference: catalog.evidence[reference]
+                    for reference in choice.movie_evidence_ids
+                }
             )
             recommendations.append(
                 Recommendation(
@@ -521,7 +542,9 @@ def run_cli(
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
 ) -> None:
-    output_fn("Olá, Michael! Gostaria de uma recomendação de filme da sua watchlist hoje?")
+    output_fn(
+        "Olá, Michael! Gostaria de uma recomendação de filme da sua watchlist hoje?"
+    )
     request = input_fn("Conte o que você está procurando: ").strip()
     if not request:
         output_fn("Nenhum pedido informado.")

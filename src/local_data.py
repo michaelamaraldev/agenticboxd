@@ -31,6 +31,7 @@ class SearchConstraints:
 
 def request_constraints(request: str) -> SearchConstraints:
     """Extract explicit year and runtime limits from a Portuguese request."""
+    # Limites estritos são convertidos para minutos inclusivos antes da busca
     text = normalize(request)
     runtime_max = _duration_after(text, r"(?:ate|no maximo|maximo de)")
     strict_runtime_max = _duration_after(text, r"menos de")

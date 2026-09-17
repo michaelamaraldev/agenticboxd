@@ -1,11 +1,6 @@
 .env
-.venv/
-.agents/
-.codex/
+.*/
 AGENTS.md
 __pycache__/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
 data/taste_profile.json
 runs/
