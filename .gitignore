@@ -2,5 +2,4 @@
 .*/
 AGENTS.md
 __pycache__/
-data/taste_profile.json
-runs/
+evals

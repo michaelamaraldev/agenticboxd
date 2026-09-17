@@ -116,7 +116,7 @@ def build_manifest(
     python_version: str,
     ollama_version: str,
 ) -> dict[str, object]:
-    # O manifesto liga cada run às versões exatas de dados, prompts e dependências
+    # versões exatas de dados, prompts e dependências
     return {
         "run_id": run_id,
         "git_revision": git_revision,
@@ -138,7 +138,9 @@ def build_manifest(
 def safe_trace_metadata(
     source: Mapping[str, object], *, environment: str
 ) -> dict[str, object]:
-    metadata = {field: source[field] for field in TRACE_METADATA_FIELDS if field in source}
+    metadata = {
+        field: source[field] for field in TRACE_METADATA_FIELDS if field in source
+    }
     metadata["environment"] = environment
     return metadata
 
@@ -149,7 +151,8 @@ class RunRecorder:
         self.run_dir = Path(runs_root) / str(self.manifest["run_id"])
         self.run_dir.mkdir(parents=True, exist_ok=False)
         (self.run_dir / "manifest.json").write_text(
-            json.dumps(self.manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            json.dumps(self.manifest, ensure_ascii=False, indent=2, sort_keys=True)
+            + "\n",
             encoding="utf-8",
         )
 
@@ -158,7 +161,9 @@ class RunRecorder:
             "event": event,
             "recorded_at": datetime.now(UTC).isoformat(),
         }
-        payload.update({key: value for key, value in values.items() if key in EVENT_FIELDS})
+        payload.update(
+            {key: value for key, value in values.items() if key in EVENT_FIELDS}
+        )
         with (self.run_dir / "events.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
 
@@ -214,7 +219,9 @@ def repository_version(root: Path) -> tuple[str, bool]:
 def ollama_version_info(base_url: str, model_name: str) -> tuple[str, str]:
     try:
         with httpx.Client(base_url=base_url, timeout=5) as client:
-            version = str(client.get("/api/version").raise_for_status().json()["version"])
+            version = str(
+                client.get("/api/version").raise_for_status().json()["version"]
+            )
             models = client.get("/api/tags").raise_for_status().json().get("models", [])
         match = next(
             (
