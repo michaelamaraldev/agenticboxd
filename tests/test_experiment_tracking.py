@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from test_local_data import fixture_data
 
@@ -72,6 +72,64 @@ class ExperimentTrackingTests(unittest.TestCase):
         self.assertEqual(
             ["eligible_watchlist", "request_constraints", "verified_output"],
             [evaluator.__name__ for evaluator in evaluators],
+        )
+
+    def test_runner_reuses_existing_dataset_without_recreating_examples(self):
+        client = Mock()
+        client.has_dataset.return_value = True
+        evaluate_fn = Mock(return_value="experiment-result")
+
+        with (
+            patch("evals.run_benchmark.Client", return_value=client),
+            patch("evals.run_benchmark.evaluate", evaluate_fn),
+        ):
+            result = run_benchmark(
+                Mock(),
+                ["pedido real"],
+                evaluate_fn=evaluate_fn,
+                experiment_prefix="letterboxd-recommender",
+            )
+
+        self.assertEqual("experiment-result", result)
+        client.create_dataset.assert_not_called()
+        client.create_examples.assert_not_called()
+        self.assertEqual(
+            "letterboxd-recommender-requests",
+            evaluate_fn.call_args.kwargs["data"],
+        )
+
+    def test_runner_creates_missing_dataset_and_examples(self):
+        client = Mock()
+        client.has_dataset.return_value = False
+        evaluate_fn = Mock(return_value="experiment-result")
+
+        with (
+            patch("evals.run_benchmark.Client", return_value=client),
+            patch("evals.run_benchmark.evaluate", evaluate_fn),
+        ):
+            result = run_benchmark(
+                Mock(),
+                ["pedido real 1", "pedido real 2"],
+                evaluate_fn=evaluate_fn,
+                experiment_prefix="letterboxd-recommender",
+            )
+
+        self.assertEqual("experiment-result", result)
+        client.create_dataset.assert_called_once()
+        client.create_examples.assert_called_once()
+        self.assertEqual(
+            [
+                {"request": "pedido real 1"},
+                {"request": "pedido real 2"},
+            ],
+            [
+                example["inputs"]
+                for example in client.create_examples.call_args.kwargs["examples"]
+            ],
+        )
+        self.assertEqual(
+            "letterboxd-recommender-requests",
+            evaluate_fn.call_args.kwargs["data"],
         )
 
     def test_eligible_watchlist_accepts_intersection_and_rejects_foreign_movie(self):

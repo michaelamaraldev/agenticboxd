@@ -148,16 +148,16 @@ def run_benchmark(
             dataset_name,
             description="Pedidos reais usados na demonstração de tracking.",
         )
-    client.create_examples(
-        dataset_name=dataset_name,
-        examples=[
-            {
-                "id": uuid.uuid5(uuid.NAMESPACE_URL, f"{dataset_name}:{request}"),
-                "inputs": {"request": request},
-            }
-            for request in requests
-        ],
-    )
+        client.create_examples(
+            dataset_name=dataset_name,
+            examples=[
+                {
+                    "id": uuid.uuid5(uuid.NAMESPACE_URL, f"{dataset_name}:{request}"),
+                    "inputs": {"request": request},
+                }
+                for request in requests
+            ],
+        )
     return evaluate_fn(
         target,
         data=dataset_name,
