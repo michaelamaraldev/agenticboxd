@@ -88,7 +88,9 @@ class RecommendationPrimaryTests(unittest.TestCase):
         ]
         result = self.recommender(script).recommend("Quero uma viagem dramática")
 
-        self.assertEqual([item.title for item in result.recommendations], ["Filme 1", "Filme 0"])
+        self.assertEqual(
+            [item.title for item in result.recommendations], ["Filme 1", "Filme 0"]
+        )
         self.assertTrue(result.recommendations[0].is_primary)
         self.assertFalse(result.recommendations[1].is_primary)
         self.assertEqual(result.recommendations[0].fit_reason.count("."), 3)
@@ -158,14 +160,14 @@ class RealTimeFlowTests(unittest.TestCase):
             call(
                 "TasteProfile",
                 {
-                    "likes": [
-                        {"text": "Aprecia drama", "evidence_ids": ["ratings:1"]}
-                    ],
+                    "likes": [{"text": "Aprecia drama", "evidence_ids": ["ratings:1"]}],
                     "dislikes": [],
                 },
                 "profile",
             ),
-            call("analyze_history", {"question": "Verifique sessões recentes"}, "history"),
+            call(
+                "analyze_history", {"question": "Verifique sessões recentes"}, "history"
+            ),
             call(
                 "search_history_evidence",
                 {"date_from": "2026-01-01"},
@@ -199,25 +201,34 @@ class RealTimeFlowTests(unittest.TestCase):
         flow = "\n".join(events)
 
         expected_order = (
-            "agente de gosto chamou a tool search_taste_evidence",
+            "taste agent chamou a tool search_taste_evidence",
             "tool search_taste_evidence devolveu",
-            "agente de gosto concluiu",
-            "agente recomendador chamou a tool analyze_history",
-            "agente de histórico chamou a tool search_history_evidence",
+            "taste agent concluiu",
+            "recommendation agent chamou a tool analyze_history",
+            "history agent chamou a tool search_history_evidence",
             "tool search_history_evidence devolveu",
-            "agente de histórico concluiu",
+            "history agent concluiu",
             "tool analyze_history devolveu",
-            "agente recomendador chamou a tool search_candidates",
+            "recommendation agent chamou a tool search_candidates",
             "tool search_candidates devolveu",
-            "agente recomendador chamou a tool get_tmdb_details",
+            "recommendation agent chamou a tool get_tmdb_details",
             "tool get_tmdb_details confirmou",
-            "agente recomendador concluiu",
+            "recommendation agent concluiu",
         )
         positions = [flow.index(fragment) for fragment in expected_order]
         self.assertEqual(positions, sorted(positions))
         self.assertEqual(tuple(events), result.flow)
         self.assertTrue(events[0].startswith("1. "))
-        for forbidden in ("↳", "->", "<-", "`", '"', "AIMessage", "ToolMessage", "tool_call"):
+        for forbidden in (
+            "↳",
+            "->",
+            "<-",
+            "`",
+            '"',
+            "AIMessage",
+            "ToolMessage",
+            "tool_call",
+        ):
             self.assertNotIn(forbidden, flow)
         for private_text in (
             "Verifique sessões recentes",
@@ -264,7 +275,9 @@ class RealTimeFlowTests(unittest.TestCase):
         ]
         events = []
         with self.assertRaises(ValueError):
-            self.recommender(script).recommend("Uma viagem", flow_callback=events.append)
+            self.recommender(script).recommend(
+                "Uma viagem", flow_callback=events.append
+            )
 
         flow = "\n".join(events)
         self.assertIn("A tool get_tmdb_details falhou.", flow)
@@ -278,16 +291,22 @@ class RealTimeFlowTests(unittest.TestCase):
         class StreamingRecommender:
             def recommend(self, request, flow_callback=None):
                 self.assert_callback(flow_callback)
-                flow_callback("1. O agente recomendador chamou a tool search_candidates.")
+                flow_callback(
+                    "1. O recommendation agent chamou a tool search_candidates."
+                )
                 timeline.append("recommendation-finished")
                 return CineResult(
-                    flow=("1. O agente recomendador chamou a tool search_candidates.",),
+                    flow=(
+                        "1. O recommendation agent chamou a tool search_candidates.",
+                    ),
                     metrics={"model_calls": 3, "taste_cache_hit": True},
                 )
 
             def assert_callback(self, callback):
                 if callback is None:
-                    raise AssertionError("run_cli must provide a real-time flow callback")
+                    raise AssertionError(
+                        "run_cli must provide a real-time flow callback"
+                    )
 
         run_cli(
             StreamingRecommender(),
@@ -299,7 +318,7 @@ class RealTimeFlowTests(unittest.TestCase):
         self.assertEqual(rendered.count("FLUXO DOS AGENTES"), 1)
         self.assertEqual(rendered.count("chamou a tool search_candidates"), 1)
         self.assertLess(
-            timeline.index("1. O agente recomendador chamou a tool search_candidates."),
+            timeline.index("1. O recommendation agent chamou a tool search_candidates."),
             timeline.index("recommendation-finished"),
         )
         self.assertNotIn("Métricas locais", rendered)
