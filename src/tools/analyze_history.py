@@ -22,12 +22,14 @@ def create_analyze_history_tool(
     @tool
     def analyze_history(question: str = "") -> str:
         """Investigate relevant diary periods or rewatch signals for the current request."""
+        if state.calls:
+            raise ValueError("history analysis is already defined")
         state.calls += 1
         store = evidence_store.fork()
-        scope = budget.scope("history", model_limit=4, tool_limit=4)
+        scope = budget.scope("history", model_limit=2, tool_limit=2)
         agent = create_history_agent(model, [create_history_search_tool(store)], [scope])
         result = agent.invoke({"messages": [history_message(request, store.summary(("diary",)), question)]},
-                              config={"max_concurrency": 1, "recursion_limit": 20})
+                              config={"max_concurrency": 1, "recursion_limit": 8})
         context = result.get("structured_response")
         if not isinstance(context, HistoryContext):
             raise TypeError("invalid history agent structured response")

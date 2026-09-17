@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -23,6 +24,7 @@ from src.local_data import (
     SearchConstraints,
     TasteCache,
     create_search_candidates_tool,
+    normalize,
     request_constraints,
 )
 from src.models import (
@@ -39,14 +41,32 @@ from src.observability import (
     ollama_version_info,
     runtime_manifest_factory,
 )
-from src.tmdb import TmdbClient, load_tmdb_cache, sync_tmdb_cache
 from src.tools.analyze_history import HistoryToolState, create_analyze_history_tool
 from src.tools.analyze_taste import TasteToolState, create_analyze_taste_tool
 from src.tools.get_tmdb_details import TmdbToolState, create_get_tmdb_details_tool
+from tmdb import TmdbClient, load_tmdb_cache, sync_tmdb_cache
 
 
 class InvalidAgentResult(TypeError, ValueError):
     pass
+
+
+def _needs_history(request: str) -> bool:
+    """Identify requests that explicitly depend on recent viewing history."""
+    text = normalize(request)
+    signals = (
+        r"\brecentemente\b",
+        r"\bultimamente\b",
+        r"\bo que (?:eu )?tenho (?:visto|assistido)\b",
+        r"\bo que (?:eu )?assisti\b",
+        r"\bja assisti\b",
+        r"\bvenho assistindo\b",
+        r"\bdiario\b",
+        r"\brever\b",
+        r"\breassist",
+        r"\bhistorico recente\b",
+    )
+    return any(re.search(pattern, text) for pattern in signals)
 
 
 def _rows(path: Path, required_fields: tuple[str, ...]) -> list[dict[str, str]]:
@@ -325,26 +345,14 @@ class Recommender:
                     "total_seconds": time.perf_counter() - started,
                 },
             )
-        budget = RequestBudget(flow_callback)
+        budget = RequestBudget(flow_callback, global_limit=6)
         constraints = request_constraints(request)
         profile, personal_evidence, cache_hit, cache_warning = self._taste_profile(
             budget
         )
         if cache_warning:
             warnings += (cache_warning,)
-        taste_state = TasteToolState(profile=profile)
-        analyze_taste = create_analyze_taste_tool(
-            self.model, self.evidence_store, taste_state, budget, personal_evidence
-        )
         history_state = HistoryToolState()
-        analyze_history = create_analyze_history_tool(
-            self.model,
-            self.evidence_store,
-            request,
-            history_state,
-            budget,
-            personal_evidence,
-        )
         catalog = LocalCatalog(self.data, self.cache)
         tmdb_state = TmdbToolState()
         get_tmdb_details = create_get_tmdb_details_tool(
@@ -352,15 +360,34 @@ class Recommender:
             verified_candidates(self.data, self.cache),
             tmdb_state,
         )
+        recommendation_tools = [
+            create_search_candidates_tool(catalog, constraints),
+            get_tmdb_details,
+        ]
+        recommendation_limit = 3
+        if _needs_history(request):
+            recommendation_tools.insert(
+                0,
+                create_analyze_history_tool(
+                    self.model,
+                    self.evidence_store,
+                    request,
+                    history_state,
+                    budget,
+                    personal_evidence,
+                ),
+            )
+            recommendation_limit = 4
         recommendation_agent = create_recommendation_agent(
             self.model,
+            recommendation_tools,
             [
-                analyze_taste,
-                analyze_history,
-                create_search_candidates_tool(catalog, constraints),
-                get_tmdb_details,
+                budget.scope(
+                    "recommendation",
+                    model_limit=recommendation_limit,
+                    tool_limit=recommendation_limit,
+                )
             ],
-            [budget.scope("recommendation", model_limit=8, tool_limit=8)],
         )
         result = recommendation_agent.invoke(
             {
@@ -371,21 +398,31 @@ class Recommender:
                     )
                 ]
             },
-            config={"recursion_limit": 24, "max_concurrency": 1},
+            config={"recursion_limit": 12, "max_concurrency": 1},
         )
         if not isinstance(result, Mapping):
             raise InvalidAgentResult("invalid recommendation agent result")
         choices = result.get("structured_response")
         if not isinstance(choices, RecommendationChoices):
             raise InvalidAgentResult("invalid recommendation agent structured response")
+        confirmed_choices = [
+            choice
+            for choice in choices.recommendations
+            if choice.candidate_id in tmdb_state.confirmed
+        ]
+        discarded_count = len(choices.recommendations) - len(confirmed_choices)
+        if discarded_count:
+            warnings += (
+                f"{discarded_count} escolha(s) não confirmada(s) pelo TMDb foram descartadas.",
+            )
+        primary_candidate_id = choices.primary_candidate_id
+        confirmed_ids = {choice.candidate_id for choice in confirmed_choices}
+        if primary_candidate_id not in confirmed_ids and confirmed_choices:
+            primary_candidate_id = confirmed_choices[0].candidate_id
         # Os dados exibidos vêm do cache TMDb, não do texto gerado pela LLM
         recommendations = []
-        for choice in choices.recommendations:
-            fact = tmdb_state.confirmed.get(choice.candidate_id)
-            if fact is None:
-                raise ValueError(
-                    f"recommendation is not TMDb-confirmed: {choice.candidate_id}"
-                )
+        for choice in confirmed_choices:
+            fact = tmdb_state.confirmed[choice.candidate_id]
             _validate_constraints(fact, constraints)
             invalid_personal = [
                 reference
@@ -437,8 +474,74 @@ class Recommender:
                     runtime_minutes=fact.runtime_minutes,
                     cast=fact.cast,
                     evidence=evidence,
-                    is_primary=choice.candidate_id == choices.primary_candidate_id,
+                    is_primary=choice.candidate_id == primary_candidate_id,
                 )
+            )
+        if not recommendations and tmdb_state.selected_ids:
+            candidate_id = tmdb_state.selected_ids[0]
+            fact = tmdb_state.confirmed[candidate_id]
+            _validate_constraints(fact, constraints)
+            evidence_fields = (
+                "overview",
+                "genres",
+                "directors",
+                "runtime_minutes",
+                "title",
+                "year",
+            )
+            evidence_id = next(
+                (
+                    f"movie:{candidate_id}:{field}"
+                    for field in evidence_fields
+                    if f"movie:{candidate_id}:{field}" in catalog.supplied
+                    and f"movie:{candidate_id}:{field}" in catalog.evidence
+                ),
+                None,
+            )
+            if evidence_id is None:
+                raise ValueError("confirmed fallback has no supplied movie evidence")
+            has_constraints = any(
+                value is not None
+                for value in (
+                    constraints.year_min,
+                    constraints.year_max,
+                    constraints.runtime_min,
+                    constraints.runtime_max,
+                )
+            )
+            fit_reason = (
+                f"Como alternativa segura para o pedido atual, {fact.title} foi "
+                "confirmado na sua watchlist e respeita as restrições objetivas "
+                "informadas."
+                if has_constraints
+                else (
+                    f"Como alternativa segura para o pedido atual, {fact.title} "
+                    "é uma opção confirmada da sua watchlist para considerar."
+                )
+            )
+            recommendations.append(
+                Recommendation(
+                    watchlist_id=fact.watchlist_id,
+                    title=fact.title,
+                    year=fact.year,
+                    fit_reason=fit_reason,
+                    overview=fact.overview,
+                    genres=fact.genres,
+                    directors=fact.directors,
+                    runtime_minutes=fact.runtime_minutes,
+                    cast=fact.cast,
+                    evidence={
+                        "request": request,
+                        evidence_id: catalog.evidence[evidence_id],
+                    },
+                    is_primary=True,
+                )
+            )
+            warnings += (
+                (
+                    "A resposta do modelo não trouxe uma escolha confirmada; foi "
+                    "usada a primeira opção já validada pelo TMDb."
+                ),
             )
         recommendations.sort(key=lambda item: not item.is_primary)
         metrics = budget.snapshot()

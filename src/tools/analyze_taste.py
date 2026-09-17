@@ -22,10 +22,10 @@ def profile_refs(profile):
 
 def run_taste(model, evidence_store: EvidenceStore, budget, question=""):
     store = evidence_store.fork()
-    scope = budget.scope("taste", model_limit=4, tool_limit=4)
+    scope = budget.scope("taste", model_limit=2, tool_limit=2)
     agent = create_taste_agent(model, [create_taste_search_tool(store)], [scope])
     summary = store.summary(("ratings", "reviews", "likes", "favorites", "rankings"))
-    result = agent.invoke({"messages": [taste_message(summary, question)]}, config={"max_concurrency": 1, "recursion_limit": 20})
+    result = agent.invoke({"messages": [taste_message(summary, question)]}, config={"max_concurrency": 1, "recursion_limit": 8})
     profile = result.get("structured_response")
     if not isinstance(profile, TasteProfile):
         raise TypeError("invalid taste agent structured response")

@@ -361,13 +361,13 @@ def create_search_candidates_tool(
     def search_candidates(
         query: str = "",
         page: int = 1,
-        page_size: int = 10,
+        page_size: int = 5,
         year_min: int | None = None,
         year_max: int | None = None,
         runtime_min: int | None = None,
         runtime_max: int | None = None,
     ) -> str:
-        """Search verified watchlist by lexical terms and year/runtime; empty query browses pages of at most 20."""
+        """Search verified watchlist once with lexical terms and objective filters."""
         effective_year_min = (
             max(
                 value
@@ -404,18 +404,58 @@ def create_search_candidates_tool(
             if runtime_max is not None or constraints.runtime_max is not None
             else None
         )
-        return json.dumps(
-            catalog.search(
-                query,
+        bounded_page_size = min(page_size, 5)
+        result = catalog.search(
+            query,
+            page,
+            bounded_page_size,
+            effective_year_min,
+            effective_year_max,
+            effective_runtime_min,
+            effective_runtime_max,
+        )
+        if query and not result["records"]:
+            result = catalog.search(
+                "",
                 page,
-                min(page_size, 10),
+                bounded_page_size,
                 effective_year_min,
                 effective_year_max,
                 effective_runtime_min,
                 effective_runtime_max,
-            ),
-            ensure_ascii=False,
+            )
+        fields = (
+            "candidate_id",
+            "title",
+            "year",
+            "overview",
+            "genres",
+            "directors",
+            "runtime_minutes",
+            "evidence_ids",
         )
+        records = result["records"]
+        if not isinstance(records, list):
+            raise TypeError("candidate records must be a list")
+        compact_records = []
+        evidence_fields = fields[1:-1]
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            compact = {field: record[field] for field in fields}
+            allowed_evidence = {
+                f"movie:{record['candidate_id']}:{field}"
+                for field in evidence_fields
+                if record.get(field) not in (None, "", [])
+            }
+            compact["evidence_ids"] = [
+                reference
+                for reference in record["evidence_ids"]
+                if reference in allowed_evidence
+            ]
+            compact_records.append(compact)
+        result["records"] = compact_records
+        return json.dumps(result, ensure_ascii=False)
 
     return search_candidates
 

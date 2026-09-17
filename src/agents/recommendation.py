@@ -21,9 +21,6 @@ An occasion or feeling alone is not a reason to call analyze_history.
 Do not apply deterministic mood mappings; infer subjective fit from the request and verified movie fields.
 Before searching, extract explicit hard constraints from the request, especially runtime and year.
 Pass every applicable numeric constraint to search_candidates and never select a candidate that violates it.
-Choose whether analyze_taste or analyze_history will provide useful new evidence. Both are optional.
-Do not call analyze_taste merely to repeat or rephrase supplied profile signals.
-Call at most one specialist per request. Never call both analyze_taste and analyze_history.
 For requests about recent viewing, viewing changes, repetition, or "what I have been watching",
 call analyze_history. The taste profile cannot answer temporal questions, so do not replace history
 with analyze_taste for those requests. If analyze_history is called, every final recommendation must
@@ -31,12 +28,10 @@ cite at least one diary evidence ID returned by it; for a request seeking someth
 the contrast with that recent evidence.
 Use search_candidates to inspect bounded pages with verified descriptions and evidence IDs.
 Search is lexical and ranks candidates matching any term. Use one or two short terms, title fragments,
-numeric filters, or browse with an empty query. Use at most two search_candidates calls with page_size 10.
-Never repeat a query. If the first search is empty, broaden it or browse once with query="". After results
-are available, select from them and continue; do not search for a sentence or a list of titles.
-You have eight model calls and eight tool calls INCLUDING RecommendationChoices; the request shares sixteen
-of each with specialists. Leave calls for confirmation and final output. Call tools serially.
-Once sufficient evidence is available, call get_tmdb_details exactly ONCE with one to ten candidate_ids.
+numeric filters, or browse with an empty query. Call search_candidates exactly once with page_size at most 5.
+The tool broadens an empty lexical result internally while preserving numeric filters, so never retry it.
+Call tools serially and leave calls for confirmation and final output.
+Once results are available, call get_tmdb_details exactly ONCE with one to three candidate_ids.
 This locks the final selection. Then call RecommendationChoices with up to three of those confirmed IDs.
 When recommendations is nonempty, set primary_candidate_id to exactly one candidate in recommendations.
 Choose that movie as the clear main recommendation; the other movies are complete alternatives.
@@ -140,9 +135,14 @@ def _agent_label(name: str) -> str:
 
 
 class RequestBudget:
-    def __init__(self, flow_callback: Callable[[str], None] | None = None):
+    def __init__(
+        self,
+        flow_callback: Callable[[str], None] | None = None,
+        global_limit: int = 16,
+    ):
         self.model_calls = 0
         self.tool_calls = 0
+        self.global_limit = global_limit
         self.scopes: list[BudgetScope] = []
         self.flow = FlowRecorder(flow_callback)
 
@@ -180,7 +180,10 @@ class BudgetScope(AgentMiddleware):
 
     def consume_model(self):
         # O limite compartilhado impede que os agentes entrem em ciclos de chamadas
-        if self.model_calls >= self.model_limit or self.budget.model_calls >= 16:
+        if (
+            self.model_calls >= self.model_limit
+            or self.budget.model_calls >= self.budget.global_limit
+        ):
             raise RuntimeBudgetExceeded(
                 "Limite de chamadas do modelo atingido sem resultado validado."
             )
@@ -188,7 +191,10 @@ class BudgetScope(AgentMiddleware):
         self.budget.model_calls += 1
 
     def consume_tool(self):
-        if self.tool_calls >= self.tool_limit or self.budget.tool_calls >= 16:
+        if (
+            self.tool_calls >= self.tool_limit
+            or self.budget.tool_calls >= self.budget.global_limit
+        ):
             raise RuntimeBudgetExceeded(
                 "Limite de chamadas de ferramentas atingido sem resultado validado."
             )

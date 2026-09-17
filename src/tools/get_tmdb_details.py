@@ -25,7 +25,9 @@ def create_get_tmdb_details_tool(
 
     @tool(args_schema=WatchlistSelection)
     def get_tmdb_details(candidate_ids: tuple[int, ...]) -> str:
-        """Call once with up to 10 investigated candidate IDs to confirm final TMDb facts."""
+        """Call once with up to 3 investigated candidate IDs to confirm final TMDb facts."""
+        if len(candidate_ids) > 3:
+            raise ValueError("at most three candidate_ids can be confirmed")
         unknown = [candidate_id for candidate_id in candidate_ids if candidate_id not in candidates]
         if unknown:
             raise ValueError(f"unknown candidate_id: {unknown[0]}")

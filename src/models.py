@@ -71,8 +71,11 @@ class WatchlistSelection(BaseModel):
 
     candidate_ids: tuple[int, ...] = Field(
         min_length=1,
-        max_length=10,
-        description="Unique candidate_ids copied from the verified watchlist catalog.",
+        max_length=3,
+        description=(
+            "One to three unique candidate_ids copied from the verified watchlist "
+            "catalog."
+        ),
     )
 
     @model_validator(mode="after")
@@ -111,8 +114,6 @@ class RecommendationChoices(BaseModel):
         ids = [item.candidate_id for item in self.recommendations]
         if len(ids) != len(set(ids)):
             raise ValueError("recommendation candidate_ids must be unique")
-        if ids and self.primary_candidate_id is None:
-            raise ValueError("nonempty recommendations require a primary_candidate_id")
         if not ids and self.primary_candidate_id is not None:
             raise ValueError("empty recommendations require primary_candidate_id None")
         if self.primary_candidate_id is not None and self.primary_candidate_id not in ids:
