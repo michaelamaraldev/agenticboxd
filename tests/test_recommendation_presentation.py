@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 from test_local_data import fixture_data
-from test_orchestration import ScriptedModel, call, choice
+from test_orchestration import ScriptedModel, base_script, call, choice
 
 from app import Recommender, _render_result, run_cli
 from src.agents.recommendation import RECOMMENDATION_SYSTEM_MESSAGE
@@ -61,14 +61,14 @@ class RecommendationPrimaryTests(unittest.TestCase):
         self.assertNotIn("rainy movie", prompt)
         self.assertNotIn("rain =", prompt)
 
-    def test_nonempty_choices_require_a_valid_primary_candidate(self):
+    def test_nonempty_choices_allow_primary_to_be_chosen_after_parsing(self):
         valid = RecommendationChoices.model_validate(two_choices())
         self.assertEqual(valid.primary_candidate_id, 2)
 
         missing = two_choices()
         del missing["primary_candidate_id"]
-        with self.assertRaises(ValidationError):
-            RecommendationChoices.model_validate(missing)
+        parsed = RecommendationChoices.model_validate(missing)
+        self.assertIsNone(parsed.primary_candidate_id)
 
         with self.assertRaises(ValidationError):
             RecommendationChoices.model_validate(two_choices(primary_candidate_id=3))
@@ -151,20 +151,8 @@ class RealTimeFlowTests(unittest.TestCase):
         )
 
     def test_callback_emits_nested_agents_in_chronological_natural_language(self):
+        self.recommender(base_script()).recommend("Uma viagem tranquila")
         script = [
-            call(
-                "search_taste_evidence",
-                {"source": "ratings", "page_size": 1},
-                "taste-search",
-            ),
-            call(
-                "TasteProfile",
-                {
-                    "likes": [{"text": "Aprecia drama", "evidence_ids": ["ratings:1"]}],
-                    "dislikes": [],
-                },
-                "profile",
-            ),
             call(
                 "analyze_history", {"question": "Verifique sessões recentes"}, "history"
             ),
@@ -196,14 +184,12 @@ class RealTimeFlowTests(unittest.TestCase):
         ]
         events = []
         result = self.recommender(script).recommend(
-            "Quero rever uma viagem tranquila", flow_callback=events.append
+            "Quero algo diferente do que assisti recentemente",
+            flow_callback=events.append,
         )
         flow = "\n".join(events)
 
         expected_order = (
-            "taste agent chamou a tool search_taste_evidence",
-            "tool search_taste_evidence devolveu",
-            "taste agent concluiu",
             "recommendation agent chamou a tool analyze_history",
             "history agent chamou a tool search_history_evidence",
             "tool search_history_evidence devolveu",
@@ -218,6 +204,8 @@ class RealTimeFlowTests(unittest.TestCase):
         positions = [flow.index(fragment) for fragment in expected_order]
         self.assertEqual(positions, sorted(positions))
         self.assertEqual(tuple(events), result.flow)
+        self.assertLessEqual(result.metrics["model_calls"], 6)
+        self.assertLessEqual(result.metrics["tool_calls"], 6)
         self.assertTrue(events[0].startswith("1. "))
         for forbidden in (
             "↳",
@@ -232,7 +220,7 @@ class RealTimeFlowTests(unittest.TestCase):
             self.assertNotIn(forbidden, flow)
         for private_text in (
             "Verifique sessões recentes",
-            "Quero rever uma viagem tranquila",
+            "Quero algo diferente do que assisti recentemente",
             "Aprecia drama",
             "Reassistiu drama",
             "Filme 0",

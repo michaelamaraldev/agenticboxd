@@ -22,11 +22,11 @@ class EvidenceFlowTests(unittest.TestCase):
         self.path = Path(self.directory.name) / "taste.json"
         self.data, self.cache = fixture_data()
 
-    def recommend(self, script):
+    def recommend(self, script, request="Uma viagem tranquila"):
         model = ScriptedModel(script=script)
         result = Recommender(
             self.data, model, self.cache, taste_cache_path=self.path
-        ).recommend("Uma viagem tranquila")
+        ).recommend(request)
         return model, result
 
     def profile_script(self):
@@ -49,8 +49,8 @@ class EvidenceFlowTests(unittest.TestCase):
         self.assertIn("ratings:1", second.recommendations[0].evidence)
 
     def test_history_agent_can_investigate_and_supply_personal_evidence(self):
+        self.recommend(base_script())
         script = [
-            call("TasteProfile", {"likes": [], "dislikes": []}, "profile"),
             call("analyze_history", {"question": "Verifique as sessões recentes."}, "history"),
             call("search_history_evidence", {"date_from": "2026-01-01"}, "diary"),
             call("HistoryContext", {
@@ -59,10 +59,12 @@ class EvidenceFlowTests(unittest.TestCase):
             }, "history-result"),
             *base_script(cold=False, final=choice(personal_refs=["diary:1"])),
         ]
-        model, result = self.recommend(script)
-        self.assertEqual(model.cursor, 7)
+        model, result = self.recommend(
+            script, "Quero algo diferente do que assisti recentemente"
+        )
+        self.assertEqual(model.cursor, 6)
         self.assertIn("diary:1", result.recommendations[0].evidence)
-        self.assertEqual(result.metrics["tool_calls"], 7)
+        self.assertEqual(result.metrics["tool_calls"], 6)
 
     def test_history_cannot_cite_evidence_seen_only_by_taste(self):
         script = [
@@ -162,7 +164,7 @@ class EvidenceFlowTests(unittest.TestCase):
         )
         result = json.loads(tool.invoke({"runtime_max": 300, "page_size": 20}))
         self.assertTrue(result["records"])
-        self.assertNotIn("film:0", [record["watchlist_id"] for record in result["records"]])
+        self.assertNotIn(1, [record["candidate_id"] for record in result["records"]])
         self.assertTrue(
             all(record["runtime_minutes"] <= 119 for record in result["records"])
         )
