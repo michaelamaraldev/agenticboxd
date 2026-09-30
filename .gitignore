@@ -2,4 +2,4 @@
 .*/
 AGENTS.md
 __pycache__/
-evals
+evals/__pycache__/

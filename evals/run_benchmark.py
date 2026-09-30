@@ -7,6 +7,17 @@ from typing import Any, cast
 from langsmith import Client, evaluate
 
 from app import Recommends, create_recommender
+from evals.evaluation import (
+    VERIFIED_FIELDS,
+    build_evaluation_cases,
+    cases_as_dataset,
+    evaluate_data,
+    evaluator_efficiency,
+    evaluator_evidence_grounded,
+    evaluator_quality,
+    evaluator_routing,
+    evaluator_structured_output,
+)
 from src.local_data import request_constraints as extract_request_constraints
 from src.observability import RecommendationObserver
 
@@ -15,18 +26,6 @@ DEFAULT_REQUESTS = (
     "Quero algo diferente do que tenho assistido recentemente.",
     "Escolha um drama da minha watchlist lançado depois de 2000.",
 )
-
-VERIFIED_FIELDS = (
-    "watchlist_id",
-    "title",
-    "year",
-    "overview",
-    "genres",
-    "directors",
-    "runtime_minutes",
-    "cast",
-)
-
 
 def _recommendations(run: Any) -> list[Mapping[str, Any]] | None:
     outputs = getattr(run, "outputs", None)
@@ -108,7 +107,26 @@ def build_evaluators(recommender: Recommends) -> tuple[Callable[..., Any], ...]:
                 return {"score": 0}
         return {"score": 1}
 
-    return eligible_watchlist, request_constraints, verified_output
+    return (
+        eligible_watchlist,
+        request_constraints,
+        verified_output,
+    )
+
+
+def build_all_evaluators(recommender: Recommends) -> tuple[Callable[..., Any], ...]:
+    return (
+        *build_evaluators(recommender),
+        evaluator_structured_output,
+        evaluator_evidence_grounded,
+        evaluator_routing,
+        evaluator_efficiency,
+        evaluator_quality,
+    )
+
+
+def data_evaluation(recommender: Recommends) -> dict[str, object]:
+    return evaluate_data(recommender.data, recommender.cache).model_dump()
 
 
 def run_benchmark(
@@ -126,8 +144,9 @@ def run_benchmark(
             return result.model_dump(mode="json")
         return cast(dict[Any, Any], result)
 
-    data = [{"inputs": {"request": request}} for request in requests]
-    evaluators = build_evaluators(recommender)
+    cases = build_evaluation_cases(recommender) if not requests else ()
+    data = cases_as_dataset(cases) if cases else [{"inputs": {"request": request}} for request in requests]
+    evaluators = build_all_evaluators(recommender) if cases else build_evaluators(recommender)
     if evaluate_fn is not evaluate:
         return evaluate_fn(
             target,
@@ -142,8 +161,13 @@ def run_benchmark(
         if isinstance(observer, RecommendationObserver)
         else None
     )
-    dataset_name = f"{experiment_prefix}-requests"
+    dataset_name = (
+        f"{experiment_prefix}-evaluation-v1"
+        if cases
+        else f"{experiment_prefix}-requests"
+    )
     if not client.has_dataset(dataset_name=dataset_name):
+        dataset_examples = cases_as_dataset(cases) if cases else data
         client.create_dataset(
             dataset_name,
             description="Pedidos reais usados na demonstração de tracking.",
@@ -152,10 +176,10 @@ def run_benchmark(
             dataset_name=dataset_name,
             examples=[
                 {
-                    "id": uuid.uuid5(uuid.NAMESPACE_URL, f"{dataset_name}:{request}"),
-                    "inputs": {"request": request},
+                    "id": uuid.uuid5(uuid.NAMESPACE_URL, f"{dataset_name}:{item['inputs']['request']}"),
+                    "inputs": item["inputs"],
                 }
-                for request in requests
+                for item in dataset_examples
             ],
         )
     return evaluate_fn(
@@ -169,7 +193,10 @@ def run_benchmark(
 
 
 def main() -> None:
-    run_benchmark(create_recommender(), DEFAULT_REQUESTS)
+    recommender = create_recommender()
+    report = data_evaluation(recommender)
+    print(report)
+    run_benchmark(recommender, ())
 
 
 if __name__ == "__main__":

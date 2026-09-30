@@ -293,11 +293,18 @@ Cada pedido cria um trace `recommendation_request` no LangSmith e um registro lo
 
 Para a demonstração com textos visíveis, configure `LANGSMITH_TRACING=true`, a chave e o projeto do LangSmith, além de `APP_ENV=demo`. Fora do modo `demo`, inputs e outputs são ocultados automaticamente.
 
-O benchmark reproduz os mesmos pedidos e envia três feedbacks determinísticos ao LangSmith:
+O benchmark padrão cria um dataset versionado com quinze pedidos representativos e envia avaliadores de dados, modelo e sistema ao LangSmith:
 
 - `eligible_watchlist`: todos os resultados pertencem à watchlist e ao cache TMDb;
 - `request_constraints`: duração e ano respeitam o pedido;
 - `verified_output`: estrutura, recomendação principal e fatos coincidem com o cache TMDb.
+- `evaluator_structured_output`: a saída possui estrutura válida e uma única recomendação principal.
+- `evaluator_evidence_grounded`: recomendações possuem evidências disponíveis.
+- `evaluator_routing`: o agente de histórico é acionado apenas quando necessário.
+- `evaluator_efficiency`: chamadas de modelo e tools permanecem dentro do orçamento.
+- `evaluator_quality`: a recomendação principal coincide com os candidatos aceitáveis do caso.
+
+Antes do benchmark, o comando imprime a avaliação dos dados: cobertura da watchlist pelo cache TMDb, registros ausentes, duplicidades e campos incompletos. O dataset é criado como `letterboxd-recommender-evaluation-v1` e pode ser comparado entre commits, prompts e modelos.
 
 ```powershell
 python -m evals.run_benchmark
