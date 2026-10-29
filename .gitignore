@@ -1,5 +1,10 @@
 .env
-.*/
-AGENTS.md
+.venv/
 __pycache__/
-evals/__pycache__/
+*.py[cod]
+
+data/
+runs/
+*.log
+
+AGENTS.md

@@ -646,7 +646,7 @@ def run_cli(
     output_fn: Callable[[str], None] = print,
 ) -> None:
     output_fn(
-        "Olá, Michael! Gostaria de uma recomendação de filme da sua watchlist hoje?"
+        "Olá! Gostaria de uma recomendação de filme da sua watchlist hoje?"
     )
     request = input_fn("Conte o que você está procurando: ").strip()
     if not request:
